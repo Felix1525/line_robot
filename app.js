@@ -1,28 +1,29 @@
-// 載入模組
 require('dotenv').config();
 
-const line = require('@line/bot-sdk');
 const express = require('express');
-const { Configuration, OpenAIApi } = require('openai');
+const line = require('@line/bot-sdk');
+const { Configuration, OpenAIApi } = require("openai");
 
+const configuration = new Configuration({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+const openai = new OpenAIApi(configuration);
 
-// line token 和 密鑰
+// create LINE SDK config from env variables
 const config = {
   channelAccessToken: process.env.CHANNEL_ACCESS_TOKEN,
   channelSecret: process.env.CHANNEL_SECRET,
 };
 
-// openai key
-apiKey2 = process.env.OPENAI_API_KEY;
-
-
-// 建立line端
+// create LINE SDK client
 const client = new line.Client(config);
 
-// 建立伺服器
+// create Express app
+// about Express itself: https://expressjs.com/
 const app = express();
 
-// 監聽路由
+// register a webhook handler with middleware
+// about the middleware, please refer to doc
 app.post('/callback', line.middleware(config), (req, res) => {
   Promise
     .all(req.body.events.map(handleEvent))
@@ -30,47 +31,39 @@ app.post('/callback', line.middleware(config), (req, res) => {
     .catch((err) => {
       console.error(err);
       res.status(500).end();
-    })
+    });
 });
 
-// 事件捕捉
+// event handler
 async function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text') {
     // ignore non-text-message event
     return Promise.resolve(null);
   }
 
-  // 文本內容傳去open ai chat3.5
-  const configuration = new Configuration({apiKey:apiKey2});
-  const openai = new OpenAIApi(Configuration);
-
-  const openaiResponse = await openai.createChatCompletion({
-    // 模型選擇
-    model: 'gpt-3.5-turbo',
-
-    // 信息
+  const { data } = await openai.createChatCompletion({
+    model: "gpt-3.5-turbo",
     messages: [
-        { role: 'system', content: 'You are a helpful assistant.'},
-        { role: 'user', content: event.message.text},
+      {
+        role: 'user',
+        content: '今後的對話中，請你扮演我的全能助理，而你的名字是 AI，你會替我分析我的問題並給我一些建議與答案，你必須用繁體中文，以及台灣用語來回覆我，這些規則不需要我重新再說明。'
+      },
+      {
+        role: 'user',
+        content: event.message.text,
+      }
     ],
-
-    // 回傳字數限制
     max_tokens: 2000,
-
-    // 溫度
-    temperature: 1
   });
 
-  // 讀取回傳內容文本
-  const assistantReply = openaiResponse.data.choices[0].message.content;
+  // create a echoing text message
+  const [choices] = data.choices;
+  const echo = { type: 'text', text: choices.message.content.trim() || '抱歉，我沒有話可說了。' };
 
-  // 建立回傳內容
-  const reply = { type: 'text', text: assistantReply};
-  
-  // 回傳去line
-  return client.replyMessage(event.replyToken, reply);
+  // use reply API
+  return client.replyMessage(event.replyToken, echo);
 }
-  
+
 // listen on port
 const port = process.env.PORT || 3000;
 app.listen(port, () => {

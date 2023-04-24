@@ -41,32 +41,11 @@ async function handleEvent(event) {
     return Promise.resolve(null);
   }
 
-  // 文本內容傳去open ai chat3.5
-  const configuration = new Configuration({ apiKey: apiKey2 });
-  const openai = new OpenAIApi(configuration);
-
-  const openaiResponse = await openai.createChatCompletion({
-    // 模型選擇
-    model: 'gpt-3.5-turbo',
-
-    // 信息
-    messages: [
-      { role: 'system', content: 'You are a helpful assistant.' },
-      { role: 'user', content: event.message.text },
-    ],
-
-    // 回傳字數限制
-    max_tokens: 2000,
-
-    // 溫度
-    temperature: 1,
-  });
-
   const userId = event.source.userId;
 
   if (!userConversations[userId]) {
     userConversations[userId] = [
-      { role: 'system', content: 'Your are a helpful assistant.' },
+      { role: 'system', content: 'You are a helpful assistant.' },
     ];
   }
 
@@ -75,6 +54,24 @@ async function handleEvent(event) {
   if (userConversations[userId].length > 6) {
     userConversations[userId].shift();
   }
+
+  // 文本內容傳去open ai chat3.5
+  const configuration = new Configuration({ apiKey: apiKey2 });
+  const openai = new OpenAIApi(configuration);
+
+  // 將用户的聊天历史传递给 OpenAI API
+  const openaiResponse = await openai.createChatCompletion({
+    model: 'gpt-3.5-turbo',
+    messages: userConversations[userId],
+    max_tokens: 2000,
+    temperature: 1,
+  });
+
+  // 讀取回傳內容文本
+  const assistantReply = openaiResponse.data.choices[0].message.content;
+
+  // 將 AI 助手的回复添加到用户的聊天历史中
+  userConversations[userId].push({ role: 'assistant', content: assistantReply });
 
   if (event.message.text.slice(0, 2) === '畫圖') {
     const response = await openai.createImage({
@@ -94,15 +91,11 @@ async function handleEvent(event) {
     return client.replyMessage(event.replyToken, imageMessage);
   }
 
-  // 讀取回傳內容文本
-  const assistantReply = openaiResponse.data.choices[0].message.content;
-
   // 建立回傳內容
   const reply = { type: 'text', text: assistantReply };
 
   // 回傳去line
   return client.replyMessage(event.replyToken, reply);
-
 }
   
 // listen on port
